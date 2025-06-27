@@ -1,0 +1,112 @@
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+# Load your rape data
+ncrb = pd.read_csv("NCRB_Table_3A.11.csv")
+rs = pd.read_csv("RS_Session_266_AU_1119_A.1.csv")
+
+# Clean column names
+ncrb.columns = ncrb.columns.str.strip()
+rs.columns = rs.columns.str.strip()
+
+# Extract and rename relevant columns from the RS data
+rs_2022 = rs[[
+    'State/UT',
+    '2022 - Rape (Cases Registered) - Girls (Below 18 Years)',
+    '2022 - Rape (Cases Registered) - Women (Above 18 Years)',
+    '2022 - Rape (Cases Registered) - Total',
+    '2022 - CCS',
+    '2022 - CTC'
+]].rename(columns={
+    '2022 - Rape (Cases Registered) - Girls (Below 18 Years)': 'Girls (Below 18)',
+    '2022 - Rape (Cases Registered) - Women (Above 18 Years)': 'Women (Above 18)',
+    '2022 - Rape (Cases Registered) - Total': 'Total Victims',
+    '2022 - CCS': 'Chargesheeted',
+    '2022 - CTC': 'Trials Completed'
+})
+
+# Merge NCRB and RS data
+merged = pd.merge(ncrb, rs_2022, on="State/UT", how="inner")
+
+# Add new derived columns
+merged['% Victims Below 18'] = (merged['Girls (Below 18)'] / merged['Total Victims']) * 100
+merged['% Chargesheeted'] = (merged['Chargesheeted'] / merged['Total Victims']) * 100
+merged['% Trials Completed'] = (merged['Trials Completed'] / merged['Total Victims']) * 100
+
+# Load the population/employment Excel data (cleaned separately)
+df = pd.read_excel("2011-IndiaState-0000.xlsx", sheet_name="Data")
+df_states = df[(df['Level'] == 'STATE') & (df['TRU'] == 'Total')]
+
+df_cleaned = df_states[[
+    'Name', 'TOT_P', 'TOT_M', 'TOT_F',
+    'MAINWORK_P', 'MAINWORK_M', 'MAINWORK_F',
+    'MARGWORK_P', 'MARGWORK_M', 'MARGWORK_F',
+    'NON_WORK_P', 'NON_WORK_M', 'NON_WORK_F'
+]]
+
+df_cleaned = df_cleaned.rename(columns={'Name': 'State/UT'})
+
+# Merge everything into one dataset
+final = pd.merge(merged, df_cleaned, on='State/UT', how='left')
+
+# Add more calculated columns
+final['Victims per Lakh Females'] = (final['Total Victims'] * 100000) / final['TOT_F']
+final['% Female Main Workers'] = (final['MAINWORK_F'] / final['TOT_F']) * 100
+final['% Female Marginal Workers'] = (final['MARGWORK_F'] / final['TOT_F']) * 100
+final['% Female Non-Workers'] = (final['NON_WORK_F'] / final['TOT_F']) * 100
+
+# Save to CSV
+final.to_csv("Final_Combined_Rape_Population_2022.csv", index=False)
+print("✅ Data saved to Final_Combined_Rape_Population_2022.csv")
+final.columns
+
+top_states = merged.sort_values("Total Victims", ascending=False).head(10)
+sns.barplot(data=top_states, x="Total Victims", y="State/UT", palette="Reds_r")
+plt.title("Top 10 States by Rape Victims (2022)")
+plt.show()
+
+
+sns.heatmap(merged.pivot_table(index="State/UT", values="% Victims Below 18"), cmap="coolwarm", annot=True)
+plt.title("% of Victims Below 18 by State")
+plt.show()
+
+merged.plot(x="State/UT", y=["% Chargesheeted", "% Trials Completed"], kind="bar", figsize=(15,6))
+plt.title("Justice Progress by State")
+plt.ylabel("Percentage")
+plt.show()
+
+
+plt.figure(figsize=(15,10))
+sns.heatmap(merged.corr(numeric_only=True), cmap="vlag", annot=True)
+plt.title("Correlation Between Key Variables")
+plt.show()
+
+
+top_victim_rate = merged.sort_values("Victims per Lakh Females", ascending=False).head(10)
+sns.barplot(data=top_victim_rate, x="Victims per Lakh Females", y="State/UT", palette="rocket")
+plt.title("Top 10 States by Victims per Lakh Females")
+plt.show()
+
+
+sns.histplot(data=merged, x="% Victims Below 18", bins=10, kde=True, color="purple")
+plt.title("Distribution of % Victims Below 18 Across States")
+plt.xlabel("% Victims Below 18")
+plt.show()
+
+
+sns.scatterplot(data=merged, x="% Chargesheeted", y="% Trials Completed", hue="State/UT")
+plt.title("Chargesheeting vs Trial Completion Rates")
+plt.xlabel("% Chargesheeted")
+plt.ylabel("% Trials Completed")
+plt.show()
+
+sns.scatterplot(data=merged, x="% Female Main Workers", y="Victims per Lakh Females", hue="State/UT")
+plt.title("Female Workforce Participation vs Victimization Rate")
+plt.xlabel("% Female Main Workers")
+plt.ylabel("Victims per Lakh Females")
+plt.show()
+
+
+
+
